@@ -1,6 +1,8 @@
 ---
 title: "pathwayAnalysis"
-output: html_document
+output: 
+  html_document:
+    code_folding: hide
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 ---
 
@@ -14,6 +16,7 @@ suppressMessages(library("readxl"))
 suppressMessages(library("tidyverse"))
 suppressMessages(library("here"))
 suppressMessages(library("gt"))
+suppressMessages(library("tibble"))
 ```
 
 ## ActivePathways
@@ -46,6 +49,9 @@ scores2 <- as.matrix(merged_pvals)
 # define a global set of genes as a statistical background set for pathway enrichment analysis
 background <- makeBackground(gmt_file)
 
+# Check which driver genes are not in the background vector
+missing_genes <- rownames(scores2)[!rownames(scores2) %in% background]
+
 # run analysis and write results to a file
 res_path = paste(here(), '../../research/projects/PAAD_atlas/pathway_analysis/active_pathways', sep = "/")
 res <- ActivePathways(scores2, gmt_file, background = background, significant = 0.05, cytoscape_file_tag = paste(res_path, "enrichmentMap__", sep = "/"))
@@ -56,10 +62,13 @@ export_as_CSV (res, result_file)
 ## Display results
 
 ```{r display_data}
+# display genes not present in Reactome db (date 2024-03-01 https://download.baderlab.org/EM_Genesets/current_release/Human/symbol/Pathways/)
+missing_genes_df <- data.frame(missing_genes)
+#missing_genes_df
 
+# display reactome pathway hit
 res_table <- gt(res) %>%
   tab_header(title = "Pathway hits from ActivePathways")
-
 res_table
 ```
 
