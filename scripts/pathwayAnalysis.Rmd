@@ -1,0 +1,71 @@
+---
+title: "pathwayAnalysis"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries, warning=FALSE}
+suppressMessages(library(ActivePathways))
+suppressMessages(library("readxl"))
+suppressMessages(library("tidyverse"))
+suppressMessages(library("here"))
+suppressMessages(library("gt"))
+```
+
+## ActivePathways
+
+This document summarises analysing and visualising pathway enrichment in PDAC data using [ActivePathways](https://cran.r-project.org/web/packages/ActivePathways/vignettes/ActivePathways-vignette.html).
+
+ActivePathways is a tool for multivariate pathway enrichment analysis that identifies gene sets, such as pathways or Gene Ontology terms, that are over-represented in a list or matrix of genes. ActivePathways uses a data fusion method to combine multiple omics datasets, prioritizes genes based on the significance and direction of signals from the omics datasets, and performs pathway enrichment analysis of these prioritized genes. Method described in detail by [Juri Reimand et. al.](https://www.biorxiv.org/content/10.1101/2023.09.23.559116v1) 
+
+```{r read_data}
+# read GMT (Gene Matrix Transposed) file - downloaded from https://download.baderlab.org/EM_Genesets/current_release/Human/symbol/Pathways/Human_Reactome_March_01_2024_symbol.gmt
+gmt_file <- read.GMT("/Users/kanwals/OneDrive\ -\ The\ University\ of\ Melbourne/UMCCR/research/projects/PAAD_atlas/pathway_analysis/data/Human_Reactome_March_01_2024_symbol.gmt")
+
+# remove gene sets that are too large or small
+gmt_file <- Filter(function(term) length(term$genes) >= 10, gmt_file)
+gmt_file <- Filter(function(term) length(term$genes) <= 500, gmt_file)
+
+# read in driver genes list from driver analysis
+scores <- read_excel("/Users/kanwals/UMCCR/research/data/pdac_driver_analysis/results.xlsx") %>%
+  column_to_rownames("Gene") %>%
+  select(tail(names(.), 4))
+
+#  re-assign all missing values as ones, indicating that the missing values are not indicative of cancer drivers
+scores <- as.matrix(scores)
+scores[is.na(scores)] <- 1
+
+# merge the series of p-values in the columns of the scores matrix for each gene into a single combined P-value
+merged_pvals <- merge_p_values(scores, 'Brown')
+scores2 <- as.matrix(merged_pvals)
+
+# define a global set of genes as a statistical background set for pathway enrichment analysis
+background <- makeBackground(gmt_file)
+
+# run analysis and write results to a file
+res_path = paste(here(), '../../research/projects/PAAD_atlas/pathway_analysis/active_pathways', sep = "/")
+res <- ActivePathways(scores2, gmt_file, background = background, significant = 0.05, cytoscape_file_tag = paste(res_path, "enrichmentMap__", sep = "/"))
+result_file <- paste(res_path, 'reactome_results.csv', sep = '/')
+export_as_CSV (res, result_file)
+```
+
+## Display results
+
+```{r display_data}
+
+res_table <- gt(res) %>%
+  tab_header(title = "Pathway hits from ActivePathways")
+
+res_table
+```
+
+## Visualising pathway enrichment results using enrichment maps in Cytoscape
+
+The Cytoscape software and the EnrichmentMap app provide powerful tools to visualise the enriched pathways from ActivePathways as a network (i.e., an Enrichment Map). To facilitate this visualisation step, ActivePathways provides the files needed for building enrichment maps by using the argument `cytoscape_file_tag`.
+
+The required software requirements can be noted in this [guide](https://cran.r-project.org/web/packages/ActivePathways/vignettes/ActivePathways-vignette.html). 
+
